@@ -29,7 +29,7 @@ This will install the packages from the requirements.txt for this project.
 
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
+app.config['SECRET_KEY'] = 'FLASK_KEY'
 ckeditor = CKEditor(app)
 Bootstrap5(app)
 
@@ -44,9 +44,7 @@ def load_user(user_id):
 
 
 # For adding profile images to the comment section
-def avatar(self, size):
-    digest = md5(self.email.lower().encode('utf-8')).hexdigest()
-    return f'https://www.gravatar.com/avatar/{digest}?d=retro&s={size}'
+
 
 
 # CREATE DATABASE
@@ -87,6 +85,9 @@ class User(UserMixin, db.Model):
     # Parent relationship: "comment_author" refers to the comment_author property in the Comment class.
     comments = relationship("Comment", back_populates="comment_author")
 
+    def avatar(self, size):
+        digest = md5(self.email.lower().encode('utf-8')).hexdigest()
+        return f'https://www.gravatar.com/avatar/{digest}?d=retro&s={size}'
 
 # Create a table for the comments on the blog posts
 class Comment(db.Model):
@@ -295,4 +296,4 @@ def contact():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=False, port=5001)
