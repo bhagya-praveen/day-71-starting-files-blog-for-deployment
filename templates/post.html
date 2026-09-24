@@ -48,11 +48,11 @@
         <div class="comment">
           <ul class="commentList">
             <!-- Show all comments -->
-            {% for comment in post.comments: %}
+            {% for comment in post.comments %}
             <li>
               <div class="commenterImage">
                 <img
-                  src="{{ comment.comment_author.email | gravatar }}"
+                  src="{{ comment.comment_author.avatar(50) }}"
                 />
               </div>
               <div class="commentText">
