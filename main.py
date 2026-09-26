@@ -10,22 +10,9 @@ from sqlalchemy import Integer, String, Text
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm
-# Optional: add contact me email functionality (Day 60)
 # import smtplib
 import os
 from hashlib import md5
-'''
-Make sure the required packages are installed: 
-Open the Terminal in PyCharm (bottom left). 
-
-On Windows type:
-python -m pip install -r requirements.txt
-
-On MacOS type:
-pip3 install -r requirements.txt
-
-This will install the packages from the requirements.txt for this project.
-'''
 
 
 app = Flask(__name__)
@@ -33,7 +20,7 @@ app.config['SECRET_KEY'] = 'FLASK_KEY'
 ckeditor = CKEditor(app)
 Bootstrap5(app)
 
-# Configure Flask-Login
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 
@@ -43,11 +30,9 @@ def load_user(user_id):
     return db.get_or_404(User, user_id)
 
 
-# For adding profile images to the comment section
 
 
 
-# CREATE DATABASE
 class Base(DeclarativeBase):
     pass
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DB_URI","sqlite:///posts.db")
@@ -55,59 +40,63 @@ db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 
 
-# CONFIGURE TABLES
+
 class BlogPost(db.Model):
     __tablename__ = "blog_posts"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Create Foreign Key, "users.id" the users refers to the tablename of User.
-    author_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("users.id"))
-    # Create reference to the User object. The "posts" refers to the posts property in the User class.
-    author = relationship("User", back_populates="posts")
     title: Mapped[str] = mapped_column(String(250), unique=True, nullable=False)
     subtitle: Mapped[str] = mapped_column(String(250), nullable=False)
     date: Mapped[str] = mapped_column(String(250), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    # author: Mapped[str] = mapped_column(String(250), nullable=False)
     img_url: Mapped[str] = mapped_column(String(250), nullable=False)
-    # Parent relationship to the comments
-    comments = relationship("Comment", back_populates="parent_post")
+
+    author_id:Mapped[int]=mapped_column(Integer,db.ForeignKey("users.id"))
+
+    author=relationship("User",back_populates="posts")
 
 
-# Create a User table for all your registered users
-class User(UserMixin, db.Model):
+    comments=relationship("Comment",back_populates="post")
+
+
+
+class User(UserMixin,db.Model):
     __tablename__ = "users"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(100), unique=True)
-    password: Mapped[str] = mapped_column(String(100))
-    name: Mapped[str] = mapped_column(String(100))
-    # This will act like a list of BlogPost objects attached to each User.
-    # The "author" refers to the author property in the BlogPost class.
-    posts = relationship("BlogPost", back_populates="author")
-    # Parent relationship: "comment_author" refers to the comment_author property in the Comment class.
-    comments = relationship("Comment", back_populates="comment_author")
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    username:Mapped[str]=mapped_column(String(250),nullable=False)
+    email:Mapped[str]=mapped_column(String(250),unique=True,nullable=False)
+    password:Mapped[str]=mapped_column(String(250),nullable=False)
 
     def avatar(self, size):
         digest = md5(self.email.lower().encode('utf-8')).hexdigest()
         return f'https://www.gravatar.com/avatar/{digest}?d=retro&s={size}'
 
-# Create a table for the comments on the blog posts
+    posts=relationship("BlogPost",back_populates="author")
+
+    comment=relationship("Comment",back_populates="author")
+
+
+
+
 class Comment(db.Model):
     __tablename__ = "comments"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    # Child relationship:"users.id" The users refers to the tablename of the User class.
-    # "comments" refers to the comments property in the User class.
-    author_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("users.id"))
-    comment_author = relationship("User", back_populates="comments")
-    # Child Relationship to the BlogPosts
-    post_id: Mapped[str] = mapped_column(Integer, db.ForeignKey("blog_posts.id"))
-    parent_post = relationship("BlogPost", back_populates="comments")
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+    text:Mapped[str]=mapped_column(Text,nullable=False)
+
+
+    post_id:Mapped[int]=mapped_column(Integer,db.ForeignKey("blog_posts.id"))
+    author_id:Mapped[int]=mapped_column(Integer,db.ForeignKey("users.id"))
+
+    author=relationship("User",back_populates="comment")
+
+    post=relationship("BlogPost",back_populates="comments")
 
 
 with app.app_context():
     db.create_all()
 
 
-# Create an admin-only decorator
+
 def admin_only(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -120,57 +109,50 @@ def admin_only(f):
     return decorated_function
 
 
-# Register new users into the User database
+
 @app.route('/register', methods=["GET", "POST"])
 def register():
-    form = RegisterForm()
-    if form.validate_on_submit():
+        form = RegisterForm()
+        if form.validate_on_submit():
+            username = form.username.data
+            email = form.email.data
+            password = form.password.data
+            hashed_password = generate_password_hash(password, "pbkdf2:sha256", salt_length=8)
+            new_user = User(
+                username=username,
+                email=email,
+                password=hashed_password
+            )
+            if db.session.execute(db.select(User).where(User.email == email)).scalar():
+                flash("You have already signed up with that email, log in instead")
+                return redirect(url_for("login"))
+            db.session.add(new_user)
+            db.session.commit()
 
-        # Check if user email is already present in the database.
-        result = db.session.execute(db.select(User).where(User.email == form.email.data))
-        user = result.scalar()
-        if user:
-            # User already exists
-            flash("You've already signed up with that email, log in instead!")
-            return redirect(url_for('login'))
+            login_user(new_user)
 
-        hash_and_salted_password = generate_password_hash(
-            form.password.data,
-            method='pbkdf2:sha256',
-            salt_length=8
-        )
-        new_user = User(
-            email=form.email.data,
-            name=form.name.data,
-            password=hash_and_salted_password,
-        )
-        db.session.add(new_user)
-        db.session.commit()
-        # This line will authenticate the user with Flask-Login
-        login_user(new_user)
-        return redirect(url_for("get_all_posts"))
-    return render_template("register.html", form=form, current_user=current_user)
+            return redirect(url_for("get_all_posts"))
+
+        return render_template("register.html", form=form, current_user=current_user)
 
 
 @app.route('/login', methods=["GET", "POST"])
 def login():
     form = LoginForm()
     if form.validate_on_submit():
+        email = form.email.data
+        user = db.session.execute(db.select(User).where(User.email == email)).scalar()
         password = form.password.data
-        result = db.session.execute(db.select(User).where(User.email == form.email.data))
-        # Note, email in db is unique so will only have one result.
-        user = result.scalar()
-        # Email doesn't exist
-        if not user:
-            flash("That email does not exist, please try again.")
-            return redirect(url_for('login'))
-        # Password incorrect
-        elif not check_password_hash(user.password, password):
-            flash('Password incorrect, please try again.')
-            return redirect(url_for('login'))
-        else:
-            login_user(user)
-            return redirect(url_for('get_all_posts'))
+        if user:
+            if check_password_hash(user.password, password):
+                login_user(user)
+                return redirect(url_for("get_all_posts"))
+
+            flash("Password incorrect, please try again")
+            return redirect(url_for("login"))
+
+        flash("That email does not exist, please try again")
+        return redirect(url_for("login"))
 
     return render_template("login.html", form=form, current_user=current_user)
 
@@ -185,32 +167,46 @@ def logout():
 def get_all_posts():
     result = db.session.execute(db.select(BlogPost))
     posts = result.scalars().all()
+    for post in posts:
+        print("POST:", post.title)
+        print("AUTHOR:", post.author)
+        print("AUTHOR ID:", post.author_id)
+        print("USERNAME:", post.author.username)
+        print("EMAIL:", post.author.email)
     return render_template("index.html", all_posts=posts, current_user=current_user)
 
 
-# Add a POST method to be able to post comments
 @app.route("/post/<int:post_id>", methods=["GET", "POST"])
 def show_post(post_id):
+    form = CommentForm()
     requested_post = db.get_or_404(BlogPost, post_id)
-    # Add the CommentForm to the route
-    comment_form = CommentForm()
-    # Only allow logged-in users to comment on posts
-    if comment_form.validate_on_submit():
-        if not current_user.is_authenticated:
-            flash("You need to login or register to comment.")
-            return redirect(url_for("login"))
 
-        new_comment = Comment(
-            text=comment_form.comment_text.data,
-            comment_author=current_user,
-            parent_post=requested_post
-        )
-        db.session.add(new_comment)
-        db.session.commit()
-    return render_template("post.html", post=requested_post, current_user=current_user, form=comment_form)
+    if form.validate_on_submit():
+        if current_user.is_authenticated:
+            comment = Comment(text=form.commentbox.data,
+                              author=current_user,
+                              post=requested_post)
+
+            db.session.add(comment)
+            db.session.commit()
+
+            print("COMMENT SAVED:", comment.text)
+            print("COMMENT AUTHOR:", comment.author.username)
+            print("COMMENT POST:", comment.post.id)
+
+            return redirect(url_for("show_post", post_id=post_id))
+        flash("You need to login or register to comment")
+        return redirect(url_for("login"))
+
+    comments = db.session.execute(db.select(Comment).where(Comment.post_id == post_id)).scalars().all()
+    print("POST ID:", post_id)
+    print("COMMENTS:", comments)
+    print("NUMBER OF COMMENTS:", len(comments))
+
+    return render_template("post.html", post=requested_post, current_user=current_user, form=form,
+                           post_id=post_id, comments=comments)
 
 
-# Use a decorator so only an admin user can create new posts
 @app.route("/new-post", methods=["GET", "POST"])
 @admin_only
 def add_new_post():
@@ -230,7 +226,7 @@ def add_new_post():
     return render_template("make-post.html", form=form, current_user=current_user)
 
 
-# Use a decorator so only an admin user can edit a post
+
 @app.route("/edit-post/<int:post_id>", methods=["GET", "POST"])
 def edit_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
@@ -252,7 +248,7 @@ def edit_post(post_id):
     return render_template("make-post.html", form=edit_form, is_edit=True, current_user=current_user)
 
 
-# Use a decorator so only an admin user can delete a post
+
 @app.route("/delete/<int:post_id>")
 @admin_only
 def delete_post(post_id):
@@ -271,9 +267,6 @@ def about():
 def contact():
     return render_template("contact.html", current_user=current_user)
 
-# Optional: You can include the email sending code from Day 60:
-# DON'T put your email and password here directly! The code will be visible when you upload to Github.
-# Use environment variables instead (Day 35)
 
 # MAIL_ADDRESS = os.environ.get("EMAIL_KEY")
 # MAIL_APP_PW = os.environ.get("PASSWORD_KEY")
